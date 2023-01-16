@@ -5,12 +5,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
+#include <unistd.h>
 #define file1 1
+#define First(list) ((list)->firstNode != NULL ? list->firstNode:NULL)
+#define NEXT(node) (node)->nextNode
 
 //Node represents a node in the linked list, word is the word attached to the node
 // word is at the end, as the size of word is unknown so it cannot lie between two consecutive pointers in memory
 typedef struct Node{
-    struct Node *nextNode;
+    struct Node *nextNode,*prevNode;
     char *word;
 
 }Node;
@@ -51,7 +55,9 @@ void add_node(nodeList *list, char *value){
     if(list -> lastNode == NULL){
         list -> firstNode = newNode;
         list -> lastNode = newNode;
+        newNode->prevNode = NULL;
     } else{
+        newNode -> prevNode = list -> lastNode;
         list -> lastNode -> nextNode = newNode;     //Takes the previous last node and points it to the next node
         list -> lastNode = newNode;                 //Sets the added node as the last node
     }
@@ -61,6 +67,7 @@ void add_node(nodeList *list, char *value){
 
 void iterate_list(nodeList *list){
     Node *cur_node = list -> firstNode;
+    assert(cur_node != NULL);
     for(int i = 0; i < list -> count; i++){
 
         printf("%s\n",cur_node->word);
@@ -102,7 +109,7 @@ int parseFile(char filename[],nodeList *list){
     token = strtok(buffer,delmiters);
 
     while(token!=NULL){
-        printf("%s\n",token);
+        //printf("%s\n",token);
         add_node(list,token);
         token = strtok(NULL,delmiters);
         loop_check++;
@@ -110,27 +117,158 @@ int parseFile(char filename[],nodeList *list){
     }
 
     free(buffer);
+    fclose(file);
     return file_size;
 }
+
+//Returns A - B = - 1       J-A = 7
+int compare_nodes(Node *nodeA,Node *nodeB){
+    //returns s1 - s2, e.g s1>s2 = + || s1 < s2 = -
+    return strcmp(nodeA->word,nodeB->word);
+}
+
+void swap_nodes(Node *nodeA, Node *nodeB){
+    //Wow I really hope there aren't any memory issues here!
+    char *tmp = nodeA->word;
+    nodeA->word = nodeB->word;
+    nodeB->word = tmp;
+}
+
+void rm_node(Node *node,nodeList *list){
+
+    /*
+     * Deal with edge cases when removing node and primary case -- no chance this works
+     * For start and end nodes, swap the node with its neighbor and then treat it as the normal case.
+     * The pointer logic looks a bit messy - clean up later maybe
+     * Just realized this can't handle the cases where there are two nodes only
+    */
+    if(node == NULL){ printf("ERROR; CAN'T REMOVE NULL NODE"); exit(1);}
+    if(node->prevNode == NULL){
+        swap_nodes(node->nextNode,node);
+        node->nextNode = node->nextNode->nextNode;
+        node->nextNode->nextNode->prevNode = node;
+        list->count--;
+        free(node);
+        return;
+    }
+   else if(node->nextNode == NULL){
+        swap_nodes(node->prevNode,node);
+        node->prevNode = node->prevNode->prevNode;
+        node->prevNode->prevNode->nextNode = node;
+        //node->prevNode->nextNode = NULL;
+        list->count--;
+        free(node->prevNode);
+        return;
+    }
+    else if((node->nextNode == NULL) && (node->prevNode == NULL)){printf("ERROR; CANNOT REMOVE ONLY NODE"); return;}
+
+    else{
+        node->prevNode->nextNode = node->nextNode;
+        node->nextNode->prevNode = node->prevNode;
+        list->count--;
+    }
+    free(node);
+    return;
+}
+
+nodeList *common_words(nodeList *listA, nodeList *listB) {
+    nodeList *common = create_list();
+    Node *curnodeA = listA->firstNode;
+    Node *curnodeB = listB->firstNode;
+    for (int i = 0; i < listA->count; i++) {
+        curnodeB = listB->firstNode;
+        for (int j = 0; j < listB->count; j++) {
+            //printf("\n%s %s\t",curnodeA->word,curnodeB->word);
+            if ((curnodeA == NULL) || (curnodeB == NULL)) { break; }
+            if (compare_nodes(curnodeA,curnodeB) == 0) {
+                add_node(common, curnodeA->word);
+                printf("MATCH!\n");
+            }
+            curnodeB = curnodeB->nextNode;
+        }
+        curnodeA = curnodeA->nextNode;
+
+    }
+    return common;
+
+}
+
+//bubble sort and remove all duplicate words
+void bubble_sort(nodeList *list) {
+    int compare;
+    if (list->count <= 1) {
+        printf("List is length <=1 & sorted.\n");
+        return;
+    }
+    Node *curnode = list->firstNode;
+    for (int j = 0; j < list->count; j++) {
+
+        for (int i = 0; i < list->count - 1; ++i) {
+            compare = compare_nodes(curnode, curnode->nextNode);
+            if (compare > 0) {
+                //printf("%s > %s\n",curnode->word,curnode->nextNode->word);
+                swap_nodes(curnode, curnode->nextNode);
+                curnode = curnode->nextNode;
+            }
+            else if(compare == 0){rm_node(curnode->nextNode,list);}
+            else{curnode = curnode->nextNode;}
+        }
+        curnode = list->firstNode;
+    }
+}
+
+void writeFile(char *output,nodeList *list){
+    FILE *file;
+    Node *curnode = list->firstNode;
+    file = fopen(output,"w");
+
+    do {
+        fprintf(file, "%s\n",curnode->word);
+        //fputs("\n",file);
+        curnode=curnode->nextNode;
+    }while(curnode->nextNode != NULL);
+    fputs(curnode->word,file);
+    fclose(file);
+}
+
+
 
 int main(int argc, char *argv[]) {
 
     nodeList *list1 = create_list();
     nodeList *list2 = create_list();
-    char *testwords[] = {"nodeyeye","noas","michael","pingpongpower","pwpw"};
+    nodeList *list3 = create_list();
 
-    for (int i = 0; i < sizeof(testwords)/sizeof testwords[0]; ++i) {
-        add_node(list1, testwords[i]);
-    }
     //iterate_list(list1);
 
-    printf("\n%s sizeof: %lu\n", list1->firstNode->word,sizeof(nodeList));
+    //printf("\n%s sizeof: %lu\n", list1->firstNode->word,sizeof(nodeList));
 
-    printf("\n FILELENGTH %d\n", parseFile("/home/jlryan/CLionProjects/project1/test.txt",list2));
+    printf("\n FILELENGTH %d ARGC %d\n", parseFile("files/in1_3.txt",list1),argc);
+    printf("\n FILELENGTH %d ARGC %d\n", parseFile("files/in2_3.txt",list2),argc);
+    printf("\n FILELENGTH %d ARGC %d\n", parseFile("files/in3_3.txt",list3),argc);
+//    printf("\n%s\n",NEXT(list2->firstNode));
 //    printf(" %d %s Hello, World!\n", argc,node1.word);
 //    printf(" %d %s Hello, World!\n", argc,argv[file1]);
-    iterate_list(list2);
+    //swap_nodes(list2->lastNode,list2->firstNode);
+    //rm_node(list2->lastNode,list2);
+    nodeList *Common = create_list();
 
+
+    Common = common_words(list1,list2);
+    Common = common_words(Common, list3);
+
+    bubble_sort(Common);
+    iterate_list(Common);
+
+    writeFile("files/output.txt",Common);
+
+
+    /*
+    char cwd[256];
+    getcwd(cwd,256);
+    printf("%s",cwd);
+    */
     //free(list1);
     return 0;
 }
+
